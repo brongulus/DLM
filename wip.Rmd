@@ -1,0 +1,83 @@
+---
+title: "GHI Estimation using DLM"
+output: html_document
+---
+
+# Data Pre-Processing
+
+Let's clean the given data first, get rid of unnecessary hour values, we're only interested in GHI values for hour 8-16.
+
+```{r}
+df <- read.csv(file = './Bhadla new.csv')
+temp = subset(df, Hour>7 & Hour<17)
+ghi = temp[,c("Year","Month","Day","Hour","GHI","Clearsky.GHI")] # "Minute" not needed
+head(ghi) # Check it's all correct
+```
+
+FIXME: Split the data 80:20 into training and testing data. (2001-2021)
+
+```{r}
+ghi$Date = as.Date(paste(ghi$Year, ghi$Month, ghi$Day, sep = "-"))
+ghi$Date = as.POSIXct(paste(ghi$Date, ghi$Hour), format = "%Y-%m-%d %H")
+ghi = ghi[,c("Date", "GHI", "Clearsky.GHI")]
+require('dplyr')
+train <- sample_frac(ghi, 0.8) 
+sid  <- as.numeric(rownames(train))
+test  <- ghi[-sid,]
+head(train)
+head(test)
+```
+
+Looks good, let's convert this into a time series object now.
+Conversion of this dataframe slice into an xts object will allow us to use the relevant functionalities.
+
+```{r}
+require('xts')
+traints <- xts(train$GHI, train$Date)
+T = length(traints)
+tail(traints) # Why does it still go till 2021 end?
+plot(traints[1:T], main = "GHI", xlab = "Date", ylab = "GHI", major.format = "%d-%m-%Y %H")
+# plot(ghits$Clearsky.GHI, main = "Clearsky GHI", xlab = "Date", ylab = "Clearsky GHI")
+```
+
+# First Attempt
+
+Let's try to create a simple first order polynomial model.
+
+```{r}
+library(dlm)
+index  <- 1:T # FIXME:  Correct x-label
+
+model = dlmModPoly(order=1, dV=1, dW=1, m0=600, C0=500) # + dlmModSeas(12)
+results_filtered_dlm = dlmFilter(traints[1:T], model)
+results_smoothed_dlm = dlmSmooth(results_filtered_dlm)
+
+plot(index, traints[1:T], ylab = "GHI", 
+     main = "GHI",
+     type='l', xlab="Datapoint",lty=3)
+# points(index,traints[1:T],pch=1)
+lines(index,results_filtered_dlm$m[-1],col='red',lwd=2)
+lines(index,results_smoothed_dlm$s[-1],col='blue',lwd=2)
+legend('topright', legend=c("Filtered", "Smoothened"),
+       col = c("red","blue"), lty=c(1,1))
+```
+
+FIXME: Now, to use this trained model to check for test data. (What metrics?)
+
+```{r}
+testts <- xts(test$GHI, test$Date)
+T2 = length(testts)
+results_forecasted_dlm = dlmForecast(results_filtered_dlm, nAhead = T2)
+
+index2 <-  1:T2
+plot(index2, testts[1:T2], ylab = "GHI", 
+     main = "GHI FC",
+     type='l', xlab="Datapoint",lty=3,ylim=c(100,1000))
+points(index2,testts[1:T2],pch=1)
+lines(index2,results_forecasted_dlm$a[,1],col='red',lwd=2)
+# lines(index2,results_smoothed_dlm$s[-1],col='blue',lwd=2)
+# legend('topright', legend=c("Filtered", "Smoothened"),
+#       col = c("red","blue"), lty=c(1,1))
+length(traints)
+length(testts)
+```
