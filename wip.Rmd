@@ -12,30 +12,24 @@ df <- read.csv(file = './Bhadla new.csv')
 temp = subset(df, Hour>7 & Hour<17)
 ghi = temp[,c("Year","Month","Day","Hour","GHI","Clearsky.GHI")] # "Minute" not needed
 head(ghi) # Check it's all correct
-```
-
-FIXME: Split the data 80:20 into training and testing data. (2001-2021)
-
-```{r}
 ghi$Date = as.Date(paste(ghi$Year, ghi$Month, ghi$Day, sep = "-"))
 ghi$Date = as.POSIXct(paste(ghi$Date, ghi$Hour), format = "%Y-%m-%d %H")
 ghi = ghi[,c("Date", "GHI", "Clearsky.GHI")]
-require('dplyr')
-train <- sample_frac(ghi, 0.8) 
-sid  <- as.numeric(rownames(train))
-test  <- ghi[-sid,]
-head(train)
-head(test)
 ```
 
 Looks good, let's convert this into a time series object now.
 Conversion of this dataframe slice into an xts object will allow us to use the relevant functionalities.
+Split the data 80:20 into training and testing data. (2001-2021)
 
 ```{r}
 require('xts')
-traints <- xts(train$GHI, train$Date)
+ghits <- xts(ghi$GHI, ghi$Date)
+train_date <- nrow(ghits) *0.8
+traints <- ghits[1:train_date,]
+testts <- ghits[-c(1:train_date),]
 T = length(traints)
-tail(traints) # Why does it still go till 2021 end?
+tail(traints)
+head(testts)
 plot(traints[1:T], main = "GHI", xlab = "Date", ylab = "GHI", major.format = "%d-%m-%Y %H")
 # plot(ghits$Clearsky.GHI, main = "Clearsky GHI", xlab = "Date", ylab = "Clearsky GHI")
 ```
@@ -65,7 +59,6 @@ legend('topright', legend=c("Filtered", "Smoothened"),
 FIXME: Now, to use this trained model to check for test data. (What metrics?)
 
 ```{r}
-testts <- xts(test$GHI, test$Date)
 T2 = length(testts)
 results_forecasted_dlm = dlmForecast(results_filtered_dlm, nAhead = T2)
 
